@@ -127,8 +127,8 @@ void showBoot() {
   consoleState = MENU;
 }
 
-// ==== Écran GAME OVER ====
-/ ==== Écran GAME OVER / VICTOIRE ====
+
+// ==== Écran de fin (Victoire ou Défaite) ====
 void showGameOver() {
   int lastScore = currentGame->getScore();
   int high = getHighScore(currentGameId);
@@ -142,58 +142,47 @@ void showGameOver() {
   screen.fillScreen(TFT_BLACK);
   
   if (isVictory) {
-    // Écran de VICTOIRE (vert)
-    screen.setTextColor(TFT_GREEN, TFT_BLACK);
+    // Ecran de VICTOIRE (Vert)
+    screen.fillRect(0, 0, 240, 40, TFT_DARKGREEN);
+    screen.setTextColor(TFT_YELLOW, TFT_DARKGREEN);
     screen.setTextSize(3);
-    screen.setCursor(40, 20);
+    screen.setCursor(35, 10);
     screen.print("VICTOIRE!");
     
     // Son de victoire
-    tone(BUZZER_PIN, 523, 200); delay(200);
-    tone(BUZZER_PIN, 659, 200); delay(200);
-    tone(BUZZER_PIN, 784, 400); delay(400);
+    tone(BUZZER_PIN, 523, 150); delay(150);
+    tone(BUZZER_PIN, 659, 150); delay(150);
+    tone(BUZZER_PIN, 784, 150); delay(150);
+    tone(BUZZER_PIN, 1047, 300); delay(300);
     noTone(BUZZER_PIN);
+    
   } else {
-    // Écran de GAME OVER (rouge)
-    screen.setTextColor(TFT_RED, TFT_BLACK);
+    // Ecran de DEFAITE (Rouge)
+    screen.fillRect(0, 0, 240, 40, TFT_MAROON);
+    screen.setTextColor(TFT_WHITE, TFT_MAROON);
     screen.setTextSize(3);
-    screen.setCursor(30, 20);
+    screen.setCursor(30, 10);
     screen.print("GAME OVER");
+    
+    // Son de defaite
+    tone(BUZZER_PIN, 200, 300); delay(300);
+    tone(BUZZER_PIN, 150, 500); delay(500);
+    noTone(BUZZER_PIN);
   }
   
   // Affichage du score
   screen.setTextColor(TFT_WHITE, TFT_BLACK);
   screen.setTextSize(2);
-  screen.setCursor(20, 60);
+  screen.setCursor(20, 55);
   screen.print("Score: ");
   screen.print(lastScore);
   
   screen.setTextColor(TFT_YELLOW, TFT_BLACK);
-  screen.setCursor(20, 85);
+  screen.setCursor(20, 80);
   screen.print("Record: ");
   screen.print(high);
   
   // Instructions
-  screen.setTextColor(TFT_CYAN, TFT_BLACK);
-  screen.setTextSize(1);
-  screen.setCursor(20, 115);
-  screen.print("[A] Rejouer  [B] Menu");
-}
-
-  screen.fillScreen(TFT_BLACK);
-  screen.setTextColor(TFT_RED, TFT_BLACK);
-  screen.setTextSize(3);
-  screen.setCursor(30, 15);
-  screen.print("GAME OVER !");
-  screen.setTextColor(TFT_WHITE, TFT_BLACK);
-  screen.setTextSize(2);
-  screen.setCursor(20, 55);
-  screen.print("SCORE  : ");
-  screen.print(lastScore);
-  screen.setTextColor(TFT_YELLOW, TFT_BLACK);
-  screen.setCursor(25, 75);
-  screen.print("MEILLEUR: ");
-  screen.print(high);
   screen.setTextColor(TFT_GREEN, TFT_BLACK);
   screen.setTextSize(1);
   screen.setCursor(20, 110);
