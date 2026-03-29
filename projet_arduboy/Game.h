@@ -16,7 +16,7 @@ enum stateGame {
   START,
   IN_PROGRESS,
   GAME_OVER,
-  VICTORY  // ← Nouvel état
+  VICTORY  // ← Ajouté pour les victoires
 };
 
 class Game {
