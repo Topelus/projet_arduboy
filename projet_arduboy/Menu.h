@@ -1,11 +1,11 @@
-// Le fichier Menu.h
 #ifndef MENU_H
 #define MENU_H
 
+#include <Arduino.h>      // nécessaire pour millis(), String
 #include <TFT_eSPI.h>
 #include "Game.h"
 
-//Structure d'un jeu dans le menu 
+// Structure d'un jeu dans le menu
 struct MenuItem {
   String name;
   String description;
@@ -23,12 +23,10 @@ class Menu {
     bool needsRedraw;
 
     // Nombre de jeux visibles simultanément
-    // Calcul : titre=20px + 4×24px + bas=15px = 131px ≤ 135px ✅
     const int VISIBLE = 4;
 
   public:
-
-    //  Constructeur
+    // Constructeur
     Menu(TFT_eSPI* display) {
       screen        = display;
       itemCount     = 0;
@@ -37,8 +35,7 @@ class Menu {
       needsRedraw   = true;
     }
 
-
-    //  Ajouter un jeu à la liste
+    // Ajouter un jeu à la liste
     void addGame(String name, String description, String emoji, int gameId) {
       if (itemCount < 10) {
         items[itemCount].name        = name;
@@ -49,19 +46,13 @@ class Menu {
       }
     }
 
-    //  Update — navigation + scroll automatique
-    //
-    //  Principe du scroll :
-    //  La fenêtre visible = [scrollOffset, scrollOffset + VISIBLE - 1]
-    //
-    //  Si curseur descend SOUS la fenêtre → scroll bas
-    //  Si curseur monte AU-DESSUS         → scroll haut
-    //  Si wrap (0 → fin ou fin → 0)       → scroll suit
-    int update(Buttons buttons) {
+    // Mise à jour de la navigation (scroll automatique)
+    // Retourne void (la sélection se lit via getSelectedId)
+    void update(Buttons buttons) {
       unsigned long now = millis();
       static unsigned long lastNavigation = 0;
 
-      // Navigation BA
+      // Navigation BAS
       if (buttons.downPressed && (now - lastNavigation > 200)) {
         selectedIndex++;
 
@@ -79,7 +70,7 @@ class Menu {
         lastNavigation = now;
       }
 
-      // ── Navigation HAUT ──
+      // Navigation HAUT
       if (buttons.upPressed && (now - lastNavigation > 200)) {
         selectedIndex--;
 
@@ -96,26 +87,14 @@ class Menu {
         needsRedraw    = true;
         lastNavigation = now;
       }
-
-      return -1;
     }
 
-
-    //  Retourner l'ID du jeu sélectionné
+    // Retourner l'ID du jeu sélectionné
     int getSelectedId() {
       return items[selectedIndex].gameId;
     }
 
-    //  Render — affiche VISIBLE jeux à la fois
-    //
-    //  Layout :
-    //  y=2   : titre "ARDUBOY"
-    //  y=18  : indicateur ▲ (si scroll possible)
-    //  y=26  : item 0 visible  (hauteur 24px)
-    //  y=50  : item 1 visible
-    //  y=74  : item 2 visible
-    //  y=98  : item 3 visible
-    //  y=122 : indicateur ▼ + compteur + aide
+    // Affichage du menu (scroll + sélection)
     void render() {
       if (!needsRedraw) return;
       needsRedraw = false;
@@ -128,8 +107,7 @@ class Menu {
       screen->setCursor(50, 2);
       screen->print("ARDUBOY");
 
-      // Indicateur scroll HAUT 
-      // Visible uniquement si des jeux sont cachés au-dessus
+      // Indicateur scroll HAUT
       if (scrollOffset > 0) {
         screen->setTextColor(TFT_WHITE, TFT_BLACK);
         screen->setTextSize(1);
@@ -139,41 +117,32 @@ class Menu {
 
       // Liste des jeux visibles
       for (int i = 0; i < VISIBLE; i++) {
-        int idx = scrollOffset + i;    // index réel dans items[]
-        if (idx >= itemCount) break;   // plus de jeux → stop
+        int idx = scrollOffset + i;
+        if (idx >= itemCount) break;
 
-        int y = 26 + (i * 24);         // position Y de cet item
+        int y = 26 + (i * 24);
 
         if (idx == selectedIndex) {
-
-          //Item sélectionné : fond gris + description 
+          // Sélectionné : fond gris + flèche
           screen->fillRect(0, y, 240, 22, TFT_DARKGREY);
-
-          // Flèche de sélection
           screen->setTextColor(TFT_CYAN, TFT_DARKGREY);
           screen->setTextSize(1);
           screen->setCursor(2, y + 7);
           screen->print("=>");
-
-          // Nom du jeu
           screen->setTextSize(2);
           screen->setTextColor(TFT_WHITE, TFT_DARKGREY);
           screen->setCursor(18, y + 3);
           screen->print(items[idx].name);
-
         } else {
-
-          // Item non sélectionné : texte gris simple 
+          // Non sélectionné
           screen->setTextColor(TFT_LIGHTGREY, TFT_BLACK);
           screen->setTextSize(2);
           screen->setCursor(18, y + 3);
           screen->print(items[idx].name);
-
         }
       }
 
       // Indicateur scroll BAS
-      // Visible uniquement si des jeux sont cachés en dessous
       if (scrollOffset + VISIBLE < itemCount) {
         screen->setTextColor(TFT_WHITE, TFT_BLACK);
         screen->setTextSize(1);
@@ -182,7 +151,6 @@ class Menu {
       }
 
       // Compteur de position
-      // Exemple : "3/10" → on est sur le 3e jeu sur 10
       screen->setTextColor(TFT_DARKGREY, TFT_BLACK);
       screen->setTextSize(1);
       screen->setCursor(195, 126);
@@ -197,8 +165,7 @@ class Menu {
       screen->print("[A] Jouer [^/v] Naviguer");
     }
 
-    //  Forcer un redessin complet du menu
-    //  Appelé quand on revient au menu depuis un jeu
+    // Forcer un redessin complet du menu
     void forceRedraw() {
       needsRedraw = true;
     }

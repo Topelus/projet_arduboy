@@ -1,71 +1,76 @@
 #ifndef PONG_H
 #define PONG_H
 
+#include <Arduino.h>      // pour random(), millis(), constrain()
 #include "Game.h"
 
 //  PONG — Jeu de raquette solo contre l'IA
 //  Boutons : HAUT / BAS pour bouger la raquette
-//  Game Over : si la balle passe derrière ta raquette
+//  Game Over : le premier à 5 points gagne
 
 class PongGame : public Game {
   private:
-
     // Raquette du joueur (gauche)
-    int paddleY;               // position Y du centre de la raquette
-    const int paddleX   = 8;   // position X fixe (côté gauche)
-    const int paddleH   = 24;  // hauteur de la raquette en pixels
-    const int paddleW   = 4;   // largeur de la raquette en pixels
-    const int paddleSpd = 3;   // vitesse de déplacement en pixels/frame
+    int paddleY;               // position Y du centre
+    const int paddleX   = 8;
+    const int paddleH   = 24;
+    const int paddleW   = 4;
+    const int paddleSpd = 3;
 
-    //Raquette de l'IA (droite)
-    int aiY;                   // position Y du centre de la raquette IA
-    const int aiX     = 228;   // position X fixe (côté droit)
-    const int aiSpd   = 2;     // vitesse de l'IA (plus lente que le joueur)
+    // Raquette de l'IA (droite)
+    int aiY;
+    const int aiX     = 228;
+    const int aiSpd   = 2;
 
     // Balle
-    int   ballX, ballY;        // position de la balle
-    float velX,  velY;         // vitesse de la balle (float pour précision)
-    const int ballSize = 4;    // taille de la balle en pixels
+    int   ballX, ballY;
+    float velX, velY;
+    const int ballSize = 4;
 
     // Score
-    int playerScore;           // score du joueur
-    int aiScore;               // score de l'IA
+    int playerScore;
+    int aiScore;
 
-    // Rendu optimisé
-    int   prevBallX,  prevBallY;   // ancienne position balle
-    int   prevPaddleY;             // ancienne position raquette joueur
-    int   prevAiY;                 // ancienne position raquette IA
-    bool  firstDraw;               // premier dessin complet ?
+    // Optimisation d'affichage
+    int   prevBallX,  prevBallY;
+    int   prevPaddleY;
+    int   prevAiY;
+    bool  firstDraw;
 
-    //Timing
-    unsigned long lastUpdate;      // dernier update de la balle
-    const int updateInterval = 16; // ~60fps
+    // Timing (~60 FPS)
+    unsigned long lastUpdate;
+    const int updateInterval = 16;
 
-    //  Reset la balle au centre après un point
+    // Remet la balle au centre avec une direction aléatoire
     void resetBall() {
       ballX = 120;
       ballY = 67;
-      // Direction aléatoire à chaque reset
       velX = (random(0, 2) == 0) ? 2.0 : -2.0;
       velY = (random(0, 2) == 0) ? 1.5 : -1.5;
     }
 
-    //  Déplacement de l'IA — suit la balle
-    //  mais avec une vitesse limitée (aiSpd)
+    // IA : suit la balle avec une vitesse limitée
     void updateAI() {
       if (ballY > aiY + paddleH / 2) aiY += aiSpd;
       else if (ballY < aiY - paddleH / 2) aiY -= aiSpd;
-      // Limiter l'IA dans l'écran
       aiY = constrain(aiY, paddleH / 2, 135 - paddleH / 2);
     }
 
   public:
     PongGame(TFT_eSPI* display) : Game(display) {}
 
-    //  Initialisation — appelée au démarrage
-    //  et à chaque nouvelle partie
+    void forceRedraw() override {
+    firstDraw = true;
+}
 
     void init() override {
+      // Initialisation du générateur aléatoire (une seule fois)
+      static bool seedDone = false;
+      if (!seedDone) {
+        randomSeed(analogRead(0));  // utilise une broche analogique flottante
+        seedDone = true;
+      }
+
       paddleY      = 67;
       aiY          = 67;
       playerScore  = 0;
@@ -77,44 +82,40 @@ class PongGame : public Game {
       resetBall();
     }
 
-
-    //  Update — logique du jeu à chaque frame
     void update(Buttons buttons) override {
       if (state == GAME_OVER) return;
       if (millis() - lastUpdate < updateInterval) return;
       lastUpdate = millis();
 
-      // Sauvegarder les anciennes positions pour l'effacement
+      // Sauvegarde pour effacement
       prevBallX   = ballX;
       prevBallY   = ballY;
       prevPaddleY = paddleY;
       prevAiY     = aiY;
 
-      //Déplacement raquette joueur
+      // Contrôle joueur
       if (buttons.up)   paddleY -= paddleSpd;
       if (buttons.down) paddleY += paddleSpd;
       paddleY = constrain(paddleY, paddleH / 2, 135 - paddleH / 2);
 
-      // Déplacement IA
       updateAI();
 
       // Déplacement balle
       ballX += (int)velX;
       ballY += (int)velY;
 
-      // Rebond murs haut/bas
+      // Rebonds murs haut/bas
       if (ballY <= 0 || ballY >= 135) velY = -velY;
 
-      // Collision raquette joueur 
+      // Collision raquette joueur (gauche)
       if (ballX <= paddleX + paddleW &&
           ballY >= paddleY - paddleH / 2 &&
           ballY <= paddleY + paddleH / 2) {
-        velX = abs(velX) + 0.1; // accélérer légèrement
-        // Angle selon où frappe la balle sur la raquette
+        velX = abs(velX) + 0.1;        // accélération
         velY = (ballY - paddleY) * 0.15;
       }
 
-      // Collision raquette IA
+      // Collision raquette IA (droite)
       if (ballX >= aiX - paddleW &&
           ballY >= aiY - paddleH / 2 &&
           ballY <= aiY + paddleH / 2) {
@@ -122,15 +123,13 @@ class PongGame : public Game {
         velY = (ballY - aiY) * 0.15;
       }
 
-      // Point marqué 
+      // Point marqué ?
       if (ballX < 0) {
-        // L'IA marque
         aiScore++;
         if (aiScore >= 5) { state = GAME_OVER; score = playerScore; return; }
         resetBall();
       }
       if (ballX > 240) {
-        // Le joueur marque
         playerScore++;
         score = playerScore;
         if (playerScore >= 5) { state = GAME_OVER; return; }
@@ -138,11 +137,7 @@ class PongGame : public Game {
       }
     }
 
-
-    //  Render — affichage optimisé
-    //  On efface uniquement les anciens pixels
     void render() override {
-
       // Premier dessin : tout afficher
       if (firstDraw) {
         firstDraw = false;
@@ -153,7 +148,7 @@ class PongGame : public Game {
           screen->fillRect(119, y, 2, 4, TFT_DARKGREY);
         }
 
-        // Score
+        // Scores
         screen->setTextColor(TFT_WHITE, TFT_BLACK);
         screen->setTextSize(2);
         screen->setCursor(80, 4);
@@ -161,34 +156,24 @@ class PongGame : public Game {
         screen->setCursor(148, 4);
         screen->print(aiScore);
 
-        // Raquettes
+        // Raquettes et balle
         screen->fillRect(paddleX, paddleY - paddleH/2, paddleW, paddleH, TFT_WHITE);
         screen->fillRect(aiX,     aiY    - paddleH/2, paddleW, paddleH, TFT_WHITE);
-
-        // Balle
         screen->fillRect(ballX, ballY, ballSize, ballSize, TFT_WHITE);
         return;
       }
 
-      // Effacer ancienne balle
+      // Effacement des anciens éléments
       screen->fillRect(prevBallX, prevBallY, ballSize, ballSize, TFT_BLACK);
-
-      // Effacer ancienne raquette joueur
       screen->fillRect(paddleX, prevPaddleY - paddleH/2, paddleW, paddleH, TFT_BLACK);
-
-      // Effacer ancienne raquette IA
       screen->fillRect(aiX, prevAiY - paddleH/2, paddleW, paddleH, TFT_BLACK);
 
-      // Dessiner nouvelle balle
+      // Dessin des nouveaux éléments
       screen->fillRect(ballX, ballY, ballSize, ballSize, TFT_WHITE);
-
-      // Dessiner nouvelle raquette joueur
       screen->fillRect(paddleX, paddleY - paddleH/2, paddleW, paddleH, TFT_WHITE);
-
-      // Dessiner nouvelle raquette IA
       screen->fillRect(aiX, aiY - paddleH/2, paddleW, paddleH, TFT_WHITE);
 
-      // Mettre à jour le score si changé
+      // Mise à jour des scores (si changés)
       screen->setTextColor(TFT_WHITE, TFT_BLACK);
       screen->setTextSize(2);
       screen->setCursor(80, 4);

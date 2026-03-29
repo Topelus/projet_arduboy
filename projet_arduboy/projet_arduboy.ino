@@ -1,11 +1,9 @@
 #include <TFT_eSPI.h>
 #include <EEPROM.h>
-
-// Bibliothèques console
 #include "Game.h"
 #include "Menu.h"
 
-//  Bibliothèques des jeux
+// ==== Jeux ====
 #include "Snake.h"
 #include "Morpion.h"
 #include "Pong.h"
@@ -13,11 +11,11 @@
 #include "FlappyBird.h"
 #include "Tetris.h"
 #include "SpaceInvaders.h"
-//#include "DinoRun.h"
-//#include "Maze.h"
-//#include "Memory.h"
+#include "DinoRun.h"
+#include "Maze.h"
+#include "Memory.h"
 
-//  Broches des boutons
+// ==== Broches ====
 #define BTN_UP 25
 #define BTN_DOWN 26
 #define BTN_LEFT 27
@@ -26,151 +24,158 @@
 #define BTN_B 15
 #define BUZZER_PIN 17
 
-Buttons buttons;
-
-//États de la console
+// ==== États de la console ====
 enum stateConsole {
   STARTING,
   MENU,
   PLAYING,
+  PAUSED,  // <--- Nouvel état
   GAMEOVER
 };
 
-int currentGameId = -1;
-
-// Variables globales
-TFT_eSPI screen = TFT_eSPI();
+// ==== Variables globales ====
+TFT_eSPI screen;
 Menu menu(&screen);
 stateConsole consoleState = STARTING;
 Game* currentGame = nullptr;
-int highScore = 0;
+int currentGameId = -1;
 
-//  Lecture des boutons
-//  Calcule les fronts montants (pressed)
-//  = vrai uniquement le frame où le bouton
-//    vient d'être appuyé
+// EEPROM : une adresse par jeu (0..6)
+const int EEPROM_SIZE = 16;
+const int HIGHSCORE_ADDR[] = { 0, 1, 2, 3, 4, 5, 6 };
 
+Buttons buttons;
+
+// ==== Lecture boutons (debouncing par front) ====
 void readButtons() {
-  bool prevUp = buttons.up;
-  bool prevDown = buttons.down;
-  bool prevLeft = buttons.left;
-  bool prevRight = buttons.right;
-  bool prevA = buttons.a;
-  bool prevB = buttons.b;
+  static bool lastUp, lastDown, lastLeft, lastRight, lastA, lastB;
+  bool nowUp = !digitalRead(BTN_UP);
+  bool nowDown = !digitalRead(BTN_DOWN);
+  bool nowLeft = !digitalRead(BTN_LEFT);
+  bool nowRight = !digitalRead(BTN_RIGHT);
+  bool nowA = !digitalRead(BTN_A);
+  bool nowB = !digitalRead(BTN_B);
 
-  buttons.up = !digitalRead(BTN_UP);
-  buttons.down = !digitalRead(BTN_DOWN);
-  buttons.left = !digitalRead(BTN_LEFT);
-  buttons.right = !digitalRead(BTN_RIGHT);
-  buttons.a = !digitalRead(BTN_A);
-  buttons.b = !digitalRead(BTN_B);
+  buttons.upPressed = nowUp && !lastUp;
+  buttons.downPressed = nowDown && !lastDown;
+  buttons.leftPressed = nowLeft && !lastLeft;
+  buttons.rightPressed = nowRight && !lastRight;
+  buttons.aPressed = nowA && !lastA;
+  buttons.bPressed = nowB && !lastB;
 
-  buttons.upPressed = buttons.up && !prevUp;
-  buttons.downPressed = buttons.down && !prevDown;
-  buttons.leftPressed = buttons.left && !prevLeft;
-  buttons.rightPressed = buttons.right && !prevRight;
-  buttons.aPressed = buttons.a && !prevA;
-  buttons.bPressed = buttons.b && !prevB;
+  buttons.up = nowUp;
+  buttons.down = nowDown;
+  buttons.left = nowLeft;
+  buttons.right = nowRight;
+  buttons.a = nowA;
+  buttons.b = nowB;
 
-  // ── Debug Serial ──
-  if (buttons.upPressed) Serial.println("BTN: UP");
-  if (buttons.downPressed) Serial.println("BTN: DOWN");
-  if (buttons.leftPressed) Serial.println("BTN: LEFT");
-  if (buttons.rightPressed) Serial.println("BTN: RIGHT");
-  if (buttons.aPressed) Serial.println("BTN: A");
-  if (buttons.bPressed) Serial.println("BTN: B");
+  lastUp = nowUp;
+  lastDown = nowDown;
+  lastLeft = nowLeft;
+  lastRight = nowRight;
+  lastA = nowA;
+  lastB = nowB;
 }
 
+// ==== High score par jeu ====
+int getHighScore(int gameId) {
+  if (gameId < 0 || gameId >= 7) return 0;
+  return EEPROM.read(HIGHSCORE_ADDR[gameId]);
+}
 
-//  Écran de démarrage
-//  Affiché une seule fois au boot
+void setHighScore(int gameId, int score) {
+  if (gameId < 0 || gameId >= 7) return;
+  if (score > getHighScore(gameId)) {
+    EEPROM.write(HIGHSCORE_ADDR[gameId], score);
+    EEPROM.commit();
+  }
+}
+
+// ==== Écran de démarrage ====
 void showBoot() {
   screen.fillScreen(TFT_BLACK);
-
   screen.drawRect(10, 10, 220, 80, TFT_CYAN);
   screen.drawRect(12, 12, 216, 76, TFT_CYAN);
-
   screen.setTextColor(TFT_CYAN, TFT_BLACK);
   screen.setTextSize(3);
   screen.setCursor(30, 35);
   screen.print(" ARDUBOY ");
-
   screen.setTextSize(1);
   screen.setTextColor(TFT_WHITE, TFT_BLACK);
   screen.setCursor(55, 60);
   screen.print("UNE CONSOLE DE JEUX");
 
-  // Son de démarrage
-  tone(BUZZER_PIN, 523, 150);
-  delay(150);
-  tone(BUZZER_PIN, 659, 150);
-  delay(150);
-  tone(BUZZER_PIN, 784, 300);
-  delay(300);
+  // Mélodie de démarrage (ascendante)
+  tone(BUZZER_PIN, 523, 100);
+  delay(100);  // Do
+  tone(BUZZER_PIN, 659, 100);
+  delay(100);  // Mi
+  tone(BUZZER_PIN, 784, 100);
+  delay(100);  // Sol
+  tone(BUZZER_PIN, 1047, 200);
+  delay(200);  // Do (octave supérieure)
+  noTone(BUZZER_PIN);
 
-  // Barre de chargement
   screen.drawRect(20, 100, 200, 15, TFT_WHITE);
   for (int i = 0; i <= 100; i += 2) {
     int largeur = (i * 196) / 100;
     screen.fillRect(22, 102, largeur, 10, TFT_GREEN);
     delay(30);
   }
-
   delay(500);
   consoleState = MENU;
 }
 
-
-//  Écran GAME OVER
-//  Affiche le score + meilleur score
-//  Sauvegarde le meilleur score en EEPROM
-//  Appelé UNE SEULE FOIS depuis case GAMEOVER
-
+// ==== Écran GAME OVER ====
 void showGameOver() {
-  highScore = EEPROM.read(0);
-
-  if (currentGame->getScore() > highScore) {
-    highScore = currentGame->getScore();
-    EEPROM.write(0, highScore);
-    EEPROM.commit();
+  int lastScore = currentGame->getScore();
+  int high = getHighScore(currentGameId);
+  if (lastScore > high) {
+    setHighScore(currentGameId, lastScore);
+    high = lastScore;
   }
 
-  int lastScore = currentGame->getScore();
-
   screen.fillScreen(TFT_BLACK);
-
   screen.setTextColor(TFT_RED, TFT_BLACK);
   screen.setTextSize(3);
   screen.setCursor(30, 15);
   screen.print("GAME OVER !");
-
   screen.setTextColor(TFT_WHITE, TFT_BLACK);
   screen.setTextSize(2);
   screen.setCursor(20, 55);
   screen.print("SCORE  : ");
   screen.print(lastScore);
-
   screen.setTextColor(TFT_YELLOW, TFT_BLACK);
   screen.setCursor(25, 75);
   screen.print("MEILLEUR: ");
-  screen.print(highScore);
-
+  screen.print(high);
   screen.setTextColor(TFT_GREEN, TFT_BLACK);
   screen.setTextSize(1);
   screen.setCursor(20, 110);
   screen.print("[A] Rejouer  [B] Menu");
 }
 
+// ==== Écran PAUSE ====
+void showPauseScreen() {
+  screen.fillScreen(TFT_BLACK);
+  screen.setTextColor(TFT_ORANGE, TFT_BLACK);
+  screen.setTextSize(3);
+  screen.setCursor(30, 30);
+  screen.print("PAUSE");
+  screen.setTextColor(TFT_WHITE, TFT_BLACK);
+  screen.setTextSize(1);
+  screen.setCursor(35, 70);
+  screen.print("[A] Continuer");
+  screen.setCursor(35, 90);
+  screen.print("[B] Quitter");
+}
 
-//  Lancement d'un jeu
-//  Supprime l'ancien jeu, crée le nouveau,
-//  l'initialise et passe en état PLAYING
-
+// ==== Lancement d’un jeu ====
 void launchGame(int gameId) {
-  if (currentGame != nullptr) {
-    delete currentGame;
-    currentGame = nullptr;
-  }
+  if (currentGame) delete currentGame;
+  currentGame = nullptr;
+  currentGameId = gameId;
 
   switch (gameId) {
     case 0: currentGame = new SnakeGame(&screen); break;
@@ -180,19 +185,24 @@ void launchGame(int gameId) {
     case 4: currentGame = new FlappyBirdGame(&screen); break;
     case 5: currentGame = new TetrisGame(&screen); break;
     case 6: currentGame = new SpaceInvadersGame(&screen); break;
-      // case 7: currentGame = new DinoRunGame(&screen);       break;
-      // case 8: currentGame = new MazeGame(&screen);          break;
-      // case 9: currentGame = new MemoryGame(&screen);        break;
+    case 7: currentGame = new DinoRunGame(&screen); break;
+    case 8: currentGame = new MazeGame(&screen); break;
+    case 9: currentGame = new MemoryGame(&screen); break;
+    default:
+      consoleState = MENU;
+      menu.forceRedraw();
+      return;
   }
 
-  if (currentGame != nullptr) {
+  if (currentGame) {
     currentGame->init();
     consoleState = PLAYING;
+  } else {
+    consoleState = MENU;
   }
 }
 
-
-//  SETUP
+// ==== SETUP ====
 void setup() {
   Serial.begin(115200);
   screen.init();
@@ -207,10 +217,10 @@ void setup() {
   pinMode(BTN_B, INPUT_PULLUP);
   pinMode(BUZZER_PIN, OUTPUT);
 
-  EEPROM.begin(16);
+  EEPROM.begin(EEPROM_SIZE);
 
   menu.addGame("Snake", "Mange les pommes!", "", 0);
-  menu.addGame("Morpion", "2 joueurs - A pour jouer!", "", 1);
+  menu.addGame("Morpion", "Joueur vs IA", "", 1);
   menu.addGame("Pong", "Bat l'IA en 5 points!", "", 2);
   menu.addGame("Breakout", "Casse toutes les briques!", "", 3);
   menu.addGame("Flappy Bird", "Evite les tuyaux!", "", 4);
@@ -223,55 +233,59 @@ void setup() {
   showBoot();
 }
 
-
-//  LOOP
-//  Machine à états de la console :
-//  STARTING → MENU → PLAYING → GAMEOVER → MENU
+// ==== LOOP ====
 void loop() {
   readButtons();
 
   switch (consoleState) {
-
-    // ── Démarrage ──
     case STARTING:
       break;
 
-    // ── Menu principal ──
     case MENU:
-      {
-        menu.update(buttons);
-        menu.render();
-
-        if (buttons.aPressed) {
-          currentGameId = menu.getSelectedId();
-          launchGame(currentGameId);
-        }
-        break;
+      menu.update(buttons);
+      menu.render();
+      if (buttons.aPressed) {
+        int id = menu.getSelectedId();
+        launchGame(id);
       }
+      break;
 
-    // ── Jeu en cours ──
     case PLAYING:
-      {
-        if (currentGame != nullptr) {
-          currentGame->update(buttons);
-          currentGame->render();
-          if (currentGame->isGameOver()) {
-            consoleState = GAMEOVER;
-          }
+      if (currentGame) {
+        // Vérifier si l'utilisateur veut mettre en pause (touche B)
+        if (buttons.bPressed) {
+          consoleState = PAUSED;
+          showPauseScreen();  // affiche immédiatement l'écran de pause
+          break;
         }
-        break;
+        currentGame->update(buttons);
+        currentGame->render();
+        if (currentGame->isGameOver()) {
+          consoleState = GAMEOVER;
+        }
+      } else {
+        consoleState = MENU;
+        menu.forceRedraw();
       }
+      break;
 
-    // ── Game Over ──
+    case PAUSED:
+      if (buttons.aPressed) {
+        currentGame->forceRedraw();  // ← force le jeu à tout redessiner
+        consoleState = PLAYING;
+      } else if (buttons.bPressed) {
+        consoleState = MENU;
+        menu.forceRedraw();
+      }
+      break;
+
     case GAMEOVER:
       {
         static bool gameOverDrawn = false;
-
         if (!gameOverDrawn) {
-          showGameOver();  // dessiné UNE SEULE FOIS
+          showGameOver();
           gameOverDrawn = true;
         }
-
         if (buttons.aPressed) {
           gameOverDrawn = false;
           launchGame(currentGameId);
@@ -281,9 +295,10 @@ void loop() {
           consoleState = MENU;
           menu.forceRedraw();
         }
-        break;
       }
+      break;
   }
 
-  delay(1);
+  buttons.clearPressed();
+  delay(10);
 }

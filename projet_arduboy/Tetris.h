@@ -266,6 +266,9 @@ class TetrisGame : public Game {
 
   public:
     TetrisGame(TFT_eSPI* display) : Game(display) {}
+    void forceRedraw() override {
+        firstDraw = true;   // force un rafraîchissement complet
+    }
 
     //  Initialisation
     void init() override {

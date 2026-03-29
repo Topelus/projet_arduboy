@@ -1,510 +1,497 @@
+// ============================================================
+//  SpaceInvaders.h — Space Invaders Infini avec descente progressive
+// ============================================================
 #ifndef SPACEINVADERS_H
 #define SPACEINVADERS_H
 
 #include "Game.h"
 
-//  SPACE INVADERS — Détruis les envahisseurs avant qu'ils t'atteignent
-//  Boutons : GAUCHE / DROITE pour déplacer le vaisseau
-//            A pour tirer
-//  Game Over : si les envahisseurs atteignent le bas ou si tu perds toutes tes vies
-
 class SpaceInvadersGame : public Game {
   private:
 
-    // ── Dimensions écran ──
-    static const int SW = 240;
-    static const int SH = 135;
+    static const int SCREEN_W = 240;
+    static const int SCREEN_H = 135;
 
-    // ── Vaisseau joueur ──
-    int   shipX;
-    const int shipY   = SH - 14;
-    const int shipW   = 14;
-    const int shipH   =  8;
-    const int shipSpd =  3;
+    static const int INV_COLS    = 8;
+    static const int INV_ROWS    = 3;
+    static const int INV_W       = 16;
+    static const int INV_H       = 10;
+    static const int INV_GAP_X   = 6;
+    static const int INV_GAP_Y   = 10;  // Espace vertical entre lignes
+    static const int INV_ORIG_X  = 12;
+    static const int INV_ORIG_Y  = 12;
+    static const int INV_STEP    = 4;
+    static const int INV_DROP    = 8;   // Descente plus douce
+    static const int INV_MARGIN  = 4;
 
-    // ── Balle joueur ──
-    int  bulletX, bulletY;
-    bool bulletActive;
-    const int bulletH   = 5;
-    const int bulletSpd = 5;
+    static const int INTERVAL_MAX = 500;
+    static const int INTERVAL_MIN = 80;
 
-    // ── Envahisseurs ──
-    static const int INV_COLS = 8;
-    static const int INV_ROWS = 3;
-    static const int INV_W    = 14;
-    static const int INV_H    =  8;
-    static const int INV_GAP_X = 8;
-    static const int INV_GAP_Y = 10;
-    static const int INV_OFF_X = 12;
-    static const int INV_OFF_Y = 18;
+    static const int PLAYER_Y    = SCREEN_H - 14;
+    static const int PLAYER_W    = 16;
+    static const int PLAYER_H    = 8;
+    static const int PLAYER_STEP = 4;
 
-    bool  invAlive[INV_ROWS][INV_COLS];
-    int   invCount;       // envahisseurs restants
-    int   invDirX;        // direction horizontale (+1 ou -1)
-    float invX;           // décalage X global (float pour vitesse variable)
-    int   invY;           // décalage Y global
-    float invSpeed;       // vitesse horizontale actuelle
-    int   invDropped;     // nombre de descentes effectuées
+    static const int MAX_BULLETS  = 2;
+    static const int BULLET_SPEED = 5;
+    static const int BULLET_W     = 2;
+    static const int BULLET_H     = 6;
 
-    // ── Bombes ennemies ──
-    static const int BOMB_MAX = 3;
-    int  bombX[BOMB_MAX], bombY[BOMB_MAX];
-    bool bombActive[BOMB_MAX];
-    const int bombSpd = 2;
+    static const int MAX_BOMBS    = 3;
+    static const int BOMB_SPEED   = 2;
+    static const int BOMB_W       = 2;
+    static const int BOMB_H       = 6;
 
-    // ── Boucliers ──
-    static const int SHIELD_COUNT = 3;
-    static const int SHIELD_W     = 20;
-    static const int SHIELD_H     = 10;
-    int shieldHP[SHIELD_COUNT];       // points de vie de chaque bouclier (max 3)
-    const int shieldY = SH - 30;
+    static const int MAX_LIVES    = 3;
+    static const int FRAME_MS     = 16;
 
-    // ── Vies joueur ──
-    int lives;
-    const int MAX_LIVES = 3;
+    struct Invader { int x, y; bool alive; uint8_t type; };
+    struct Bullet  { int x, y; bool active; };
+    struct Bomb    { int x, y; bool active; };
 
-    // ── Timing ──
-    unsigned long lastUpdate;
-    unsigned long lastInvMove;
-    unsigned long lastBomb;
-    const int updateInterval = 16;   // ~60fps
-    int invMoveInterval;             // ms entre chaque mouvement des envahisseurs
+    Invader       invaders[INV_ROWS][INV_COLS];
+    Bullet        bullets[MAX_BULLETS];
+    Bomb          bombs[MAX_BOMBS];
 
-    // ── Rendu ──
-    bool needsRedraw;
-    bool firstDraw;
+    int           playerX;
+    int           lives;
+    int           direction;
+    int           waveCount;
+    unsigned long lastMoveTime;
+    unsigned long lastFrameTime;
+    unsigned long lastBombTime;
+    int           moveInterval;
+    int           buzzerPin;
 
-    // ── Animation envahisseurs ──
-    bool invFrame;                   // alterne entre 2 frames d'animation
-    unsigned long lastAnimFrame;
+    bool          shootRequested;
+    bool          needsFullRedraw;
 
-    // ────────────────────────────────────────────
-    //  Dessiner un envahisseur (2 frames)
-    //  Rangée 0 = pieuvre, 1 = crabe, 2 = seiche
-    // ────────────────────────────────────────────
-    void drawInvader(int x, int y, int row, uint16_t color) {
-      screen->fillRect(x, y, INV_W, INV_H, TFT_BLACK); // effacer d'abord
+    static const uint16_t COL_BG      = TFT_BLACK;
+    static const uint16_t COL_PLAYER  = TFT_GREEN;
+    static const uint16_t COL_BULLET  = TFT_WHITE;
+    static const uint16_t COL_BOMB    = TFT_RED;
+    static const uint16_t COL_SCORE   = TFT_WHITE;
+    static const uint16_t COL_LIVES   = TFT_RED;
 
-      if (color == TFT_BLACK) return;  // juste effacer
-
-      if (row == 0) {
-        // Seiche (rangée haute) — simple et compacte
-        screen->fillRect(x + 4, y,     6,  2, color);
-        screen->fillRect(x + 2, y + 2, 10, 3, color);
-        screen->fillRect(x,     y + 5, 14, 2, color);
-        if (invFrame) {
-          screen->fillRect(x,     y + 7, 2, 1, color);
-          screen->fillRect(x + 12, y + 7, 2, 1, color);
-        } else {
-          screen->fillRect(x + 2, y + 7, 2, 1, color);
-          screen->fillRect(x + 10, y + 7, 2, 1, color);
-        }
-      } else if (row == 1) {
-        // Crabe (rangée milieu)
-        screen->fillRect(x + 3, y,     8,  2, color);
-        screen->fillRect(x + 1, y + 2, 12, 4, color);
-        screen->fillRect(x + 3, y + 6, 8,  2, color);
-        if (invFrame) {
-          screen->fillRect(x,      y + 4, 1, 3, color);
-          screen->fillRect(x + 13, y + 4, 1, 3, color);
-        } else {
-          screen->fillRect(x,      y + 5, 1, 2, color);
-          screen->fillRect(x + 13, y + 5, 1, 2, color);
-        }
-      } else {
-        // Pieuvre (rangée basse)
-        screen->fillRect(x + 2, y,     10, 3, color);
-        screen->fillRect(x,     y + 3, 14, 3, color);
-        screen->fillRect(x + 2, y + 6, 4,  2, color);
-        screen->fillRect(x + 8, y + 6, 4,  2, color);
-        if (invFrame) {
-          screen->fillRect(x,      y + 6, 2, 2, color);
-          screen->fillRect(x + 12, y + 6, 2, 2, color);
-        }
+    uint16_t invaderColor(uint8_t type) {
+      switch (type % 3) {
+        case 0: return TFT_RED;
+        case 1: return TFT_CYAN;
+        default: return TFT_MAGENTA;
       }
     }
 
-    // ────────────────────────────────────────────
-    //  Dessiner le vaisseau joueur
-    // ────────────────────────────────────────────
-    void drawShip(int x, uint16_t color) {
-      screen->fillRect(x - shipW/2, shipY + 3, shipW,    shipH - 3, color);
-      screen->fillRect(x - 2,       shipY,     4,        4,         color);
-      // Canon
-      screen->fillRect(x - 1, shipY - 2, 2, 3, color);
+    void playImperialMarch() {
+      int notes[] = { 392, 392, 392, 311, 466, 392, 311, 466, 392 };
+      int durations[] = { 500, 500, 500, 350, 150, 500, 350, 150, 1000 };
+      for (int i = 0; i < 9; i++) {
+        tone(buzzerPin, notes[i], durations[i]);
+        delay(durations[i] + 50);
+      }
+      noTone(buzzerPin);
     }
 
-    // ────────────────────────────────────────────
-    //  Dessiner un bouclier
-    // ────────────────────────────────────────────
-    void drawShield(int idx, bool erase = false) {
-      int sx = INV_OFF_X + idx * (SW / SHIELD_COUNT) + (SW / SHIELD_COUNT - SHIELD_W) / 2;
-      int sy = shieldY;
-      if (erase || shieldHP[idx] <= 0) {
-        screen->fillRect(sx, sy, SHIELD_W, SHIELD_H, TFT_BLACK);
+    void drawInvader(int x, int y, uint8_t type, uint16_t col) {
+      if (col == TFT_BLACK) {
+        screen->fillRect(x, y, INV_W, INV_H, COL_BG);
         return;
       }
-      uint16_t col = (shieldHP[idx] == 3) ? TFT_GREEN :
-                     (shieldHP[idx] == 2) ? TFT_YELLOW : TFT_RED;
-      screen->fillRect(sx, sy, SHIELD_W, SHIELD_H, col);
-      // Entailles selon dégâts
-      if (shieldHP[idx] < 3) screen->fillRect(sx + 2, sy, 4, 3, TFT_BLACK);
-      if (shieldHP[idx] < 2) screen->fillRect(sx + SHIELD_W - 6, sy + 3, 4, 3, TFT_BLACK);
+      switch (type % 3) {
+        case 0:
+          screen->fillRect(x + 2, y,     12, 3,  col);
+          screen->fillRect(x,     y + 3,  16, 4,  col);
+          screen->fillRect(x + 2, y + 7,  4,  3,  col);
+          screen->fillRect(x + 10,y + 7,  4,  3,  col);
+          screen->fillRect(x,     y + 2,  2,  2,  col);
+          screen->fillRect(x + 14,y + 2,  2,  2,  col);
+          break;
+        case 1:
+          screen->fillRect(x + 3, y,     10, 3,  col);
+          screen->fillRect(x + 1, y + 3,  14, 4,  col);
+          screen->fillRect(x,     y + 7,  4,  3,  col);
+          screen->fillRect(x + 6, y + 7,  4,  3,  col);
+          screen->fillRect(x + 12,y + 7,  4,  3,  col);
+          break;
+        default:
+          screen->fillRect(x + 4, y,      8,  3,  col);
+          screen->fillRect(x + 2, y + 3,  12, 4,  col);
+          screen->fillRect(x,     y + 7,  6,  3,  col);
+          screen->fillRect(x + 10,y + 7,  6,  3,  col);
+          break;
+      }
     }
 
-    // ────────────────────────────────────────────
-    //  Dessiner le HUD
-    // ────────────────────────────────────────────
+    void eraseInvader(int x, int y) {
+      screen->fillRect(x - 2, y - 2, INV_W + 4, INV_H + 4, COL_BG);
+    }
+
+    void drawPlayer(int x, uint16_t col) {
+      screen->fillRect(x,         PLAYER_Y + 4, PLAYER_W,     4, col);
+      screen->fillRect(x + 5,     PLAYER_Y,     6,            4, col);
+      screen->fillRect(x + 7,     PLAYER_Y - 3, 2,            3, col);
+    }
+
     void drawHUD() {
-      screen->fillRect(0, 0, SW, 14, TFT_BLACK);
-      screen->setTextColor(TFT_WHITE, TFT_BLACK);
+      screen->fillRect(0, SCREEN_H - 12, SCREEN_W, 12, COL_BG);
+      screen->drawFastHLine(0, SCREEN_H - 13, SCREEN_W, 0x4208);
+
+      screen->setTextColor(COL_SCORE, COL_BG);
       screen->setTextSize(1);
-      screen->setCursor(2, 3);
-      screen->print("SCO:");
+      screen->setCursor(2, SCREEN_H - 10);
+      screen->print("Score:");
       screen->print(score);
 
-      // Vies
-      screen->setCursor(160, 3);
-      screen->print("VIES:");
+      screen->setCursor(90, SCREEN_H - 10);
+      screen->print("Vague:");
+      screen->print(waveCount);
+
+      screen->setCursor(160, SCREEN_H - 10);
+      screen->setTextColor(COL_LIVES, COL_BG);
+      screen->print("Vies:");
       for (int i = 0; i < lives; i++) {
-        screen->fillTriangle(
-          192 + i * 12, shipY - 4,
-          192 + i * 12 - 4, shipY + 2,
-          192 + i * 12 + 4, shipY + 2,
-          TFT_GREEN
-        );
-        // On réutilise un mini-triangle comme icône vaisseau dans le HUD
-        screen->fillRect(192 + i * 12 - 2, 8, 4, 3, TFT_GREEN);
+        screen->fillRect(195 + i * 10, SCREEN_H - 10, 6, 6, COL_LIVES);
       }
     }
 
-    // ────────────────────────────────────────────
-    //  Position X d'un envahisseur
-    // ────────────────────────────────────────────
-    int invPosX(int col) {
-      return INV_OFF_X + col * (INV_W + INV_GAP_X) + (int)invX;
+    void updateInterval() {
+      int speedBonus = waveCount * 20;
+      moveInterval = max(INTERVAL_MIN, INTERVAL_MAX - speedBonus);
     }
 
-    int invPosY(int row) {
-      return INV_OFF_Y + row * (INV_H + INV_GAP_Y) + invY;
-    }
-
-    // ────────────────────────────────────────────
-    //  Trouver les limites gauche/droite des envahisseurs vivants
-    // ────────────────────────────────────────────
-    int leftmostCol() {
-      for (int c = 0; c < INV_COLS; c++)
-        for (int r = 0; r < INV_ROWS; r++)
-          if (invAlive[r][c]) return c;
-      return 0;
-    }
-
-    int rightmostCol() {
-      for (int c = INV_COLS - 1; c >= 0; c--)
-        for (int r = 0; r < INV_ROWS; r++)
-          if (invAlive[r][c]) return c;
-      return INV_COLS - 1;
-    }
-
-    // ────────────────────────────────────────────
-    //  Lancer une bombe depuis un envahisseur aléatoire
-    // ────────────────────────────────────────────
-    void launchBomb() {
-      // Trouver un slot libre
-      int slot = -1;
-      for (int i = 0; i < BOMB_MAX; i++) {
-        if (!bombActive[i]) { slot = i; break; }
-      }
-      if (slot < 0) return;
-
-      // Choisir un envahisseur vivant au hasard
-      int attempts = 0;
-      while (attempts < 20) {
-        int rc = random(0, INV_ROWS);
-        int cc = random(0, INV_COLS);
-        if (invAlive[rc][cc]) {
-          bombX[slot] = invPosX(cc) + INV_W / 2;
-          bombY[slot] = invPosY(rc) + INV_H;
-          bombActive[slot] = true;
+    void fireBullet() {
+      for (int i = 0; i < MAX_BULLETS; i++) {
+        if (!bullets[i].active) {
+          bullets[i].active = true;
+          bullets[i].x      = playerX + PLAYER_W / 2 - BULLET_W / 2;
+          bullets[i].y      = PLAYER_Y - BULLET_H;
           return;
         }
-        attempts++;
       }
     }
 
-    // ────────────────────────────────────────────
-    //  Vérifier si les envahisseurs ont atteint le bas
-    // ────────────────────────────────────────────
-    bool invadersReachedBottom() {
-      for (int r = INV_ROWS - 1; r >= 0; r--) {
-        for (int c = 0; c < INV_COLS; c++) {
-          if (invAlive[r][c]) {
-            if (invPosY(r) + INV_H >= shieldY) return true;
-          }
-        }
-      }
-      return false;
-    }
-
-    // ────────────────────────────────────────────
-    //  Redessiner tous les envahisseurs
-    // ────────────────────────────────────────────
-    void drawAllInvaders() {
-      const uint16_t rowCols[INV_ROWS] = { TFT_CYAN, TFT_GREEN, TFT_RED };
+    void fireBomb() {
+      int aliveList[INV_ROWS * INV_COLS][2];
+      int aliveCount = 0;
+      
       for (int r = 0; r < INV_ROWS; r++) {
         for (int c = 0; c < INV_COLS; c++) {
-          if (invAlive[r][c]) {
-            drawInvader(invPosX(c), invPosY(r), r, rowCols[r]);
-          } else {
-            // Effacer la case
-            screen->fillRect(invPosX(c) - 1, invPosY(r) - 1, INV_W + 2, INV_H + 2, TFT_BLACK);
+          if (invaders[r][c].alive) {
+            aliveList[aliveCount][0] = r;
+            aliveList[aliveCount][1] = c;
+            aliveCount++;
           }
         }
       }
+      
+      if (aliveCount == 0) return;
+      
+      int pick = random(0, aliveCount);
+      int r = aliveList[pick][0];
+      int c = aliveList[pick][1];
+      
+      for (int i = 0; i < MAX_BOMBS; i++) {
+        if (!bombs[i].active) {
+          bombs[i].active = true;
+          bombs[i].x      = invaders[r][c].x + INV_W / 2 - BOMB_W / 2;
+          bombs[i].y      = invaders[r][c].y + INV_H;
+          lastBombTime    = millis();
+          return;
+        }
+      }
+    }
+
+    // Respawn une ligne en haut avec Y différent selon la rangée
+    void respawnRow(int row) {
+      uint8_t newType = (waveCount + row) % 3;
+      
+      for (int c = 0; c < INV_COLS; c++) {
+        invaders[row][c].x     = INV_ORIG_X + c * (INV_W + INV_GAP_X);
+        // Position Y décalée selon la rangée pour éviter la superposition
+        invaders[row][c].y     = INV_ORIG_Y + row * (INV_H + INV_GAP_Y);
+        invaders[row][c].alive = true;
+        invaders[row][c].type  = newType;
+      }
+      
+      // Redessiner cette ligne
+      for (int c = 0; c < INV_COLS; c++) {
+        drawInvader(invaders[row][c].x, invaders[row][c].y, 
+                    invaders[row][c].type, invaderColor(invaders[row][c].type));
+      }
+    }
+
+    void moveFormation() {
+      unsigned long now = millis();
+      if (now - lastMoveTime < (unsigned long)moveInterval) return;
+      lastMoveTime = now;
+
+      // Vérifier rebond
+      bool bounce = false;
+      for (int r = 0; r < INV_ROWS; r++) {
+        for (int c = 0; c < INV_COLS; c++) {
+          if (!invaders[r][c].alive) continue;
+          int nx = invaders[r][c].x + direction * INV_STEP;
+          if (nx < INV_MARGIN || nx + INV_W > SCREEN_W - INV_MARGIN) {
+            bounce = true;
+            break;
+          }
+        }
+        if (bounce) break;
+      }
+
+      if (bounce) {
+        direction = -direction;
+        
+        // Vérifier d'abord quelles lignes vont toucher le bas APRES la descente
+        bool rowWillHitBottom[INV_ROWS] = {false};
+        int rowsToRespawn = 0;
+        
+        for (int r = 0; r < INV_ROWS; r++) {
+          // Trouver le Y le plus bas de cette ligne
+          int lowestY = 0;
+          bool hasAlive = false;
+          for (int c = 0; c < INV_COLS; c++) {
+            if (invaders[r][c].alive) {
+              hasAlive = true;
+              if (invaders[r][c].y > lowestY) lowestY = invaders[r][c].y;
+            }
+          }
+          
+          if (hasAlive && lowestY + INV_H + INV_DROP >= PLAYER_Y - 10) {
+            rowWillHitBottom[r] = true;
+            rowsToRespawn++;
+          }
+        }
+        
+        // Si des lignes vont toucher le bas
+        if (rowsToRespawn > 0) {
+          waveCount++;
+          updateInterval();
+          score += rowsToRespawn * 50;  // Bonus par ligne
+          
+          // Effacer les lignes qui touchent et les respawn
+          for (int r = 0; r < INV_ROWS; r++) {
+            if (rowWillHitBottom[r]) {
+              // Effacer complètement la ligne
+              for (int c = 0; c < INV_COLS; c++) {
+                if (invaders[r][c].alive) {
+                  eraseInvader(invaders[r][c].x, invaders[r][c].y);
+                }
+              }
+              // Respawn immédiatement en haut
+              respawnRow(r);
+            }
+          }
+        }
+        
+        // Descendre les lignes qui ne touchent pas le bas
+        for (int r = 0; r < INV_ROWS; r++) {
+          if (rowWillHitBottom[r]) continue;  // Cette ligne a été respawnée
+          
+          for (int c = 0; c < INV_COLS; c++) {
+            if (!invaders[r][c].alive) continue;
+            eraseInvader(invaders[r][c].x, invaders[r][c].y);
+            invaders[r][c].y += INV_DROP;
+          }
+        }
+        
+      } else {
+        // Déplacement horizontal normal
+        for (int r = 0; r < INV_ROWS; r++) {
+          for (int c = 0; c < INV_COLS; c++) {
+            if (!invaders[r][c].alive) continue;
+            eraseInvader(invaders[r][c].x, invaders[r][c].y);
+            invaders[r][c].x += direction * INV_STEP;
+          }
+        }
+      }
+
+      // Redessiner tout
+      for (int r = 0; r < INV_ROWS; r++) {
+        for (int c = 0; c < INV_COLS; c++) {
+          if (!invaders[r][c].alive) continue;
+          drawInvader(invaders[r][c].x, invaders[r][c].y, invaders[r][c].type,
+                      invaderColor(invaders[r][c].type));
+        }
+      }
+    }
+
+    void updateBullets() {
+      for (int i = 0; i < MAX_BULLETS; i++) {
+        if (!bullets[i].active) continue;
+        screen->fillRect(bullets[i].x, bullets[i].y, BULLET_W, BULLET_H, COL_BG);
+        bullets[i].y -= BULLET_SPEED;
+
+        if (bullets[i].y < 0) {
+          bullets[i].active = false;
+          continue;
+        }
+
+        bool hit = false;
+        for (int r = 0; r < INV_ROWS && !hit; r++) {
+          for (int c = 0; c < INV_COLS && !hit; c++) {
+            if (!invaders[r][c].alive) continue;
+            if (bullets[i].x + BULLET_W > invaders[r][c].x &&
+                bullets[i].x < invaders[r][c].x + INV_W    &&
+                bullets[i].y < invaders[r][c].y + INV_H    &&
+                bullets[i].y + BULLET_H > invaders[r][c].y) {
+              invaders[r][c].alive = false;
+              eraseInvader(invaders[r][c].x, invaders[r][c].y);
+              bullets[i].active = false;
+              score += (invaders[r][c].type == 0) ? 30 :
+                       (invaders[r][c].type == 1) ? 20 : 10;
+              drawHUD();
+              hit = true;
+              break;
+            }
+          }
+        }
+        if (!hit) {
+          screen->fillRect(bullets[i].x, bullets[i].y, BULLET_W, BULLET_H, COL_BULLET);
+        }
+      }
+    }
+
+    void updateBombs() {
+      for (int i = 0; i < MAX_BOMBS; i++) {
+        if (!bombs[i].active) continue;
+        screen->fillRect(bombs[i].x, bombs[i].y, BOMB_W, BOMB_H, COL_BG);
+        bombs[i].y += BOMB_SPEED;
+
+        if (bombs[i].y > SCREEN_H) {
+          bombs[i].active = false;
+          continue;
+        }
+
+        if (bombs[i].x + BOMB_W > playerX &&
+            bombs[i].x < playerX + PLAYER_W &&
+            bombs[i].y + BOMB_H > PLAYER_Y &&
+            bombs[i].y < PLAYER_Y + PLAYER_H) {
+          bombs[i].active = false;
+          lives--;
+          drawHUD();
+          screen->fillRect(playerX, PLAYER_Y - 3, PLAYER_W, PLAYER_H + 3, TFT_RED);
+          delay(120);
+          screen->fillRect(playerX, PLAYER_Y - 3, PLAYER_W, PLAYER_H + 3, COL_BG);
+          drawPlayer(playerX, COL_PLAYER);
+          if (lives <= 0) { state = GAME_OVER; return; }
+          continue;
+        }
+
+        screen->fillRect(bombs[i].x, bombs[i].y, BOMB_W, BOMB_H, COL_BOMB);
+      }
+    }
+
+    void movePlayer(Buttons buttons) {
+      int px = playerX;
+      if (buttons.leftPressed  && playerX > 0)
+        playerX -= PLAYER_STEP;
+      if (buttons.rightPressed && playerX + PLAYER_W < SCREEN_W)
+        playerX += PLAYER_STEP;
+      if (buttons.left  && !buttons.leftPressed  && playerX > 0)
+        playerX -= PLAYER_STEP;
+      if (buttons.right && !buttons.rightPressed && playerX + PLAYER_W < SCREEN_W)
+        playerX += PLAYER_STEP;
+
+      if (px != playerX) {
+        screen->fillRect(px, PLAYER_Y - 3, PLAYER_W, PLAYER_H + 3, COL_BG);
+        drawPlayer(playerX, COL_PLAYER);
+      }
+    }
+
+    void stepGame(Buttons buttons) {
+      if (shootRequested) { fireBullet(); shootRequested = false; }
+
+      movePlayer(buttons);
+      moveFormation();
+      updateBullets();
+      if (state == GAME_OVER) return;
+      updateBombs();
+      if (state == GAME_OVER) return;
+
+      unsigned long now = millis();
+      int bombDelay = max(400, moveInterval * 2);
+      if (now - lastBombTime > (unsigned long)bombDelay) fireBomb();
     }
 
   public:
-    SpaceInvadersGame(TFT_eSPI* display) : Game(display) {}
+    SpaceInvadersGame(TFT_eSPI* display, int buzzer = 17)
+      : Game(display), buzzerPin(buzzer),
+        playerX(SCREEN_W / 2 - PLAYER_W / 2),
+        lives(MAX_LIVES),
+        direction(1),
+        waveCount(0),
+        lastMoveTime(0), lastFrameTime(0), lastBombTime(0),
+        moveInterval(INTERVAL_MAX),
+        shootRequested(false), needsFullRedraw(true) {
+      for (int r = 0; r < INV_ROWS; r++)
+        for (int c = 0; c < INV_COLS; c++)
+          invaders[r][c].alive = false;
+      for (int i = 0; i < MAX_BULLETS; i++) bullets[i].active = false;
+      for (int i = 0; i < MAX_BOMBS;   i++) bombs[i].active   = false;
+    }
+
+    void forceRedraw() override {
+      needsFullRedraw = true;
+    }
 
     void init() override {
-      shipX       = SW / 2;
-      bulletActive = false;
-      invDirX     = 1;
-      invX        = 0;
-      invY        = 0;
-      invSpeed    = 1.5f;
-      invDropped  = 0;
-      invFrame    = false;
-      lives       = MAX_LIVES;
-      score       = 0;
-      state       = IN_PROGRESS;
-      firstDraw   = true;
-      needsRedraw = true;
-      lastUpdate  = 0;
-      lastInvMove = 0;
-      lastBomb    = 0;
-      lastAnimFrame = 0;
-      invMoveInterval = 600;
+      playImperialMarch();
 
-      // Initialiser les envahisseurs
-      invCount = 0;
-      for (int r = 0; r < INV_ROWS; r++)
+      // Initialiser les 3 lignes avec espacement vertical
+      for (int r = 0; r < INV_ROWS; r++) {
         for (int c = 0; c < INV_COLS; c++) {
-          invAlive[r][c] = true;
-          invCount++;
+          invaders[r][c].x     = INV_ORIG_X + c * (INV_W + INV_GAP_X);
+          invaders[r][c].y     = INV_ORIG_Y + r * (INV_H + INV_GAP_Y);
+          invaders[r][c].alive = true;
+          invaders[r][c].type  = r % 3;
         }
+      }
+      
+      for (int i = 0; i < MAX_BULLETS; i++) bullets[i].active = false;
+      for (int i = 0; i < MAX_BOMBS;   i++) bombs[i].active   = false;
 
-      // Initialiser les bombes
-      for (int i = 0; i < BOMB_MAX; i++) bombActive[i] = false;
-
-      // Initialiser les boucliers
-      for (int i = 0; i < SHIELD_COUNT; i++) shieldHP[i] = 3;
+      playerX       = SCREEN_W / 2 - PLAYER_W / 2;
+      lives         = MAX_LIVES;
+      waveCount     = 0;
+      direction     = 1;
+      score         = 0;
+      state         = IN_PROGRESS;
+      moveInterval  = INTERVAL_MAX;
+      shootRequested = false;
+      lastMoveTime  = millis();
+      lastFrameTime = millis();
+      lastBombTime  = millis();
+      needsFullRedraw = true;
     }
 
     void update(Buttons buttons) override {
       if (state == GAME_OVER) return;
 
+      if (buttons.aPressed) shootRequested = true;
+
       unsigned long now = millis();
-      if (now - lastUpdate < (unsigned long)updateInterval) return;
-      lastUpdate = now;
+      if (now - lastFrameTime < (unsigned long)FRAME_MS) return;
+      lastFrameTime = now;
 
-      // ── Déplacement vaisseau ──
-      int prevShipX = shipX;
-      if (buttons.left)  shipX -= shipSpd;
-      if (buttons.right) shipX += shipSpd;
-      shipX = constrain(shipX, shipW / 2, SW - shipW / 2);
-
-      if (prevShipX != shipX) {
-        drawShip(prevShipX, TFT_BLACK);
-        drawShip(shipX, TFT_GREEN);
-      }
-
-      // ── Tir joueur ──
-      if (buttons.aPressed && !bulletActive) {
-        bulletX = shipX;
-        bulletY = shipY - 2;
-        bulletActive = true;
-      }
-
-      // ── Mouvement balle joueur ──
-      if (bulletActive) {
-        screen->fillRect(bulletX - 1, bulletY, 2, bulletH, TFT_BLACK);
-        bulletY -= bulletSpd;
-
-        if (bulletY < 14) {
-          bulletActive = false;
-        } else {
-          // Collision balle / envahisseurs
-          bool hit = false;
-          for (int r = 0; r < INV_ROWS && !hit; r++) {
-            for (int c = 0; c < INV_COLS && !hit; c++) {
-              if (!invAlive[r][c]) continue;
-              int ix = invPosX(c);
-              int iy = invPosY(r);
-              if (bulletX >= ix && bulletX <= ix + INV_W &&
-                  bulletY <= iy + INV_H && bulletY + bulletH >= iy) {
-                // Tué !
-                invAlive[r][c] = false;
-                invCount--;
-                screen->fillRect(ix - 1, iy - 1, INV_W + 2, INV_H + 2, TFT_BLACK);
-                bulletActive = false;
-                hit = true;
-
-                // Points selon la rangée
-                const int pts[INV_ROWS] = { 30, 20, 10 };
-                score += pts[r];
-
-                // Accélérer les envahisseurs
-                invSpeed    = 1.5f + (float)(INV_ROWS * INV_COLS - invCount) * 0.08f;
-                invMoveInterval = max(80, 600 - invCount * 18);
-
-                drawHUD();
-
-                // Victoire
-                if (invCount <= 0) {
-                  score += lives * 100;
-                  state = GAME_OVER;
-                  return;
-                }
-              }
-            }
-          }
-
-          // Collision balle / boucliers
-          if (bulletActive) {
-            for (int i = 0; i < SHIELD_COUNT; i++) {
-              if (shieldHP[i] <= 0) continue;
-              int sx = INV_OFF_X + i * (SW / SHIELD_COUNT) + (SW / SHIELD_COUNT - SHIELD_W) / 2;
-              if (bulletX >= sx && bulletX <= sx + SHIELD_W &&
-                  bulletY <= shieldY + SHIELD_H && bulletY + bulletH >= shieldY) {
-                shieldHP[i]--;
-                drawShield(i);
-                bulletActive = false;
-                break;
-              }
-            }
-          }
-
-          if (bulletActive) {
-            screen->fillRect(bulletX - 1, bulletY, 2, bulletH, TFT_WHITE);
-          }
-        }
-      }
-
-      // ── Mouvement des envahisseurs ──
-      if (now - lastInvMove >= (unsigned long)invMoveInterval) {
-        lastInvMove = now;
-
-        // Alterner frame d'animation
-        invFrame = !invFrame;
-        if (now - lastAnimFrame > 300) {
-          lastAnimFrame = now;
-        }
-
-        // Détecter si un bord est atteint
-        int lx = invPosX(leftmostCol());
-        int rx = invPosX(rightmostCol()) + INV_W;
-
-        bool hitWall = (invDirX > 0 && rx + (int)invSpeed >= SW - 2) ||
-                       (invDirX < 0 && lx - (int)invSpeed <= 2);
-
-        if (hitWall) {
-          invDirX = -invDirX;
-          invY   += 6;  // descendre
-          invDropped++;
-
-          if (invadersReachedBottom()) {
-            state = GAME_OVER;
-            return;
-          }
-        } else {
-          invX += invDirX * invSpeed;
-        }
-
-        drawAllInvaders();
-      }
-
-      // ── Bombes ennemies ──
-      // Lancer une nouvelle bombe aléatoirement
-      if (now - lastBomb > (unsigned long)(1200 - invDropped * 80)) {
-        lastBomb = now;
-        launchBomb();
-      }
-
-      for (int i = 0; i < BOMB_MAX; i++) {
-        if (!bombActive[i]) continue;
-
-        // Effacer
-        screen->fillRect(bombX[i] - 1, bombY[i], 2, 5, TFT_BLACK);
-        bombY[i] += bombSpd;
-
-        if (bombY[i] > SH) {
-          bombActive[i] = false;
-          continue;
-        }
-
-        // Collision bombe / bouclier
-        bool hitShield = false;
-        for (int s = 0; s < SHIELD_COUNT; s++) {
-          if (shieldHP[s] <= 0) continue;
-          int sx = INV_OFF_X + s * (SW / SHIELD_COUNT) + (SW / SHIELD_COUNT - SHIELD_W) / 2;
-          if (bombX[i] >= sx && bombX[i] <= sx + SHIELD_W &&
-              bombY[i] >= shieldY && bombY[i] <= shieldY + SHIELD_H) {
-            shieldHP[s]--;
-            drawShield(s);
-            bombActive[i] = false;
-            hitShield = true;
-            break;
-          }
-        }
-        if (hitShield) continue;
-
-        // Collision bombe / vaisseau
-        if (bombY[i] >= shipY &&
-            bombX[i] >= shipX - shipW / 2 &&
-            bombX[i] <= shipX + shipW / 2) {
-          bombActive[i] = false;
-          lives--;
-          drawShip(shipX, TFT_BLACK);
-
-          // Flash rouge
-          screen->fillRect(shipX - shipW/2 - 2, shipY - 2, shipW + 4, shipH + 6, TFT_RED);
-          delay(120);
-          screen->fillRect(shipX - shipW/2 - 2, shipY - 2, shipW + 4, shipH + 6, TFT_BLACK);
-
-          drawHUD();
-
-          if (lives <= 0) {
-            state = GAME_OVER;
-            return;
-          }
-          drawShip(shipX, TFT_GREEN);
-          continue;
-        }
-
-        // Dessiner la bombe (zigzag)
-        uint16_t bombColor = (bombY[i] / 3 % 2 == 0) ? TFT_YELLOW : TFT_RED;
-        screen->fillRect(bombX[i] - 1, bombY[i], 2, 5, bombColor);
-      }
+      stepGame(buttons);
     }
 
     void render() override {
-      if (!firstDraw) return;
-      firstDraw = false;
+      if (!needsFullRedraw) return;
+      needsFullRedraw = false;
 
-      screen->fillScreen(TFT_BLACK);
+      screen->fillScreen(COL_BG);
 
-      // Fond étoilé
-      for (int i = 0; i < 30; i++) {
-        int sx = random(0, SW);
-        int sy = random(14, SH - 15);
-        screen->drawPixel(sx, sy, TFT_DARKGREY);
+      for (int r = 0; r < INV_ROWS; r++) {
+        for (int c = 0; c < INV_COLS; c++) {
+          if (!invaders[r][c].alive) continue;
+          drawInvader(invaders[r][c].x, invaders[r][c].y,
+                      invaders[r][c].type, invaderColor(invaders[r][c].type));
+        }
       }
 
+      drawPlayer(playerX, COL_PLAYER);
       drawHUD();
-      drawAllInvaders();
-      drawShip(shipX, TFT_GREEN);
-      for (int i = 0; i < SHIELD_COUNT; i++) drawShield(i);
     }
 
     virtual ~SpaceInvadersGame() {}
